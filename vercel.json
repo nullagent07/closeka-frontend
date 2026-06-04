@@ -1,0 +1,17 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/jobs",
+      "schedule": "0 0 * * *"
+    }
+  ],
+  "github": {
+    "enabled": true,
+    "silent": false,
+    "autoJobCancelation": true,
+    "deploymentSuffix": "",
+    "commentOnCommit": false,
+    "checks": { "autoCancel": true },
+    "protectBranches": true
+  }
+}
