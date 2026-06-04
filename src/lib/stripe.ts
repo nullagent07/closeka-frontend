@@ -6,6 +6,6 @@ export function stripe(): Stripe {
   if (cached) return cached;
   const key = process.env.STRIPE_SECRET_KEY;
   if (!key) throw new Error("STRIPE_SECRET_KEY is not set");
-  cached = new Stripe(key, { apiVersion: "2024-12-18.acacia" as Stripe.LatestApiVersion });
+  cached = new Stripe(key, { apiVersion: "2025-02-24.acacia" });
   return cached;
 }

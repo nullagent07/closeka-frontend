@@ -28,7 +28,7 @@ cp .env.example .env.local
 #   POSTMARK_API_TOKEN, POSTMARK_FROM_EMAIL
 #   MISTRAL_API_KEY
 #   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
-#   STRIPE_PRICE_ID_STARTER, STRIPE_PRICE_ID_FIRM, STRIPE_PRICE_ID_SCALE
+#   STRIPE_PRICE_ID_STARTER, STRIPE_PRICE_ID_GROWTH, STRIPE_PRICE_ID_SCALE
 #   CRON_SECRET
 pnpm dev
 ```
@@ -74,15 +74,42 @@ header `X-Inbound-Secret` to verify the source.
 src/
   app/                Next.js App Router
     api/              Route handlers (uploads, billing, webhooks, cron, postmark)
-    dashboard/        Authed dashboard shell + subroutes
+    clients/          Authed client management (list, new, detail, close periods)
+    client-portal/    Read-only magic link for clients (token = periodId)
+    dashboard/        Authed dashboard shell
+    drafts/           Draft generation, review, approve & send
+    settings/         Billing (Stripe Checkout)
     sign-in/ sign-up/ Clerk hosted pages
   components/         UI primitives + Providers
   db/                 Drizzle schema + connection
-  lib/                Cross-cutting modules (auth, env, llm, ai, email, stripe, jobs, supabase, validators)
+  lib/                Cross-cutting modules (auth, env, llm, ai, email, stripe, jobs, supabase, validators, workspace)
   middleware.ts       Clerk route protection
 drizzle.config.ts     Drizzle Kit
 scripts/              Local-only job/cron helpers
+vercel.json           Cron schedule (`/api/cron/jobs`)
 ```
+
+## Pages
+
+- `/` — marketing landing
+- `/sign-in`, `/sign-up` — Clerk hosted auth
+- `/dashboard` — workspace overview
+- `/clients`, `/clients/new` — list and create clients
+- `/clients/[id]` — client detail + close period list
+- `/clients/[id]/close/new` — create close period
+- `/clients/[id]/close/[periodId]` — checklist + drafts for a period
+- `/drafts/new?periodId=…` — enqueue an `analyze_close` job
+- `/drafts/[id]` — review a draft and approve & send
+- `/client-portal/[token]` — read-only client view
+- `/settings/billing` — pick a plan, opens Stripe Checkout
+
+## Job handlers
+
+Registered in `src/lib/jobs-handlers.ts`:
+
+- `process_inbound_email` — match inbound Postmark message to a client and link it
+- `analyze_close` — call the LLM, persist `question_sets`/`questions`/`email_drafts`
+- `send_reminder` — send an approved draft via Postmark
 
 ## Naming
 

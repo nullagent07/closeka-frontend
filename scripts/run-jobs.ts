@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 import "dotenv/config";
 import { drainJobs } from "../src/lib/jobs";
+import "../src/lib/jobs-handlers";
 
 async function main() {
-  const claimed = await drainJobs(25);
-  console.log(`claimed ${claimed.length} jobs`);
-  for (const j of claimed) {
-    console.log(` - ${j.kind} (${j.id}) payload=${JSON.stringify(j.payload)}`);
+  const result = await drainJobs(25);
+  console.log(`processed ${result.processed} jobs`);
+  for (const r of result.results) {
+    console.log(` - ${r.ok ? "ok" : "fail"} ${r.id}${r.error ? ` err=${r.error}` : ""}`);
   }
   process.exit(0);
 }
