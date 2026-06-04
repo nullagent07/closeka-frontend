@@ -54,7 +54,7 @@ export default async function BillingPage() {
               <p className="text-sm text-muted-foreground mt-2">{p.description}</p>
             </div>
             <form action="/api/billing/checkout" method="post">
-              <input type="hidden" name="priceId" value={p.id} />
+              <input type="hidden" name="plan" value={p.id} />
               <Button className="w-full" type="submit">
                 Choose {p.name}
               </Button>

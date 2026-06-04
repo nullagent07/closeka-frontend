@@ -1,11 +1,27 @@
 import { notFound } from "next/navigation";
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { closePeriods, emailDrafts, questionSets, questions } from "@/db/schema";
+import { closePeriods, emailDrafts, questions } from "@/db/schema";
 import { Card } from "@/components/ui/card";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+function verifyToken(token: string): string | null {
+  const parts = token.split(".");
+  if (parts.length !== 2) return null;
+  const [periodId, sig] = parts;
+  const secret = process.env.CRON_SECRET;
+  if (!secret) {
+    return process.env.NODE_ENV === "production" ? null : periodId;
+  }
+  const expected = createHmac("sha256", secret).update(periodId).digest("hex");
+  const a = Buffer.from(sig, "hex");
+  const b = Buffer.from(expected, "hex");
+  if (a.length !== b.length) return null;
+  return timingSafeEqual(a, b) ? periodId : null;
+}
 
 export default async function ClientPortalPage({
   params,
@@ -13,9 +29,9 @@ export default async function ClientPortalPage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  // Token strategy: token = `${closePeriodId}.${hmacShort}`. For now accept just closePeriodId.
-  const periodId = token.split(".")[0];
+  const periodId = verifyToken(token);
   if (!periodId) notFound();
+
   const [period] = await db.select().from(closePeriods).where(eq(closePeriods.id, periodId));
   if (!period) notFound();
 
