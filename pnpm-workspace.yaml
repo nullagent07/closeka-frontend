@@ -1,0 +1,7 @@
+allowBuilds:
+  "@clerk/shared": true
+  esbuild: true
+  msgpackr-extract: true
+  sharp: true
+  unrs-resolver: true
+strictDepBuilds: false
