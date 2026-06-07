@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import "dotenv/config";
 
 async function main() {
   const base = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";

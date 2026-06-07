@@ -37,10 +37,12 @@ const serverSchema = z.object({
     .url()
     .default("https://litellm-production-33a41.up.railway.app"),
   LITELLM_API_KEY: optionalMin(1),
-  LITELLM_MODEL_SMALL: z.string().default("mistral-small-latest"),
-  LITELLM_MODEL_ESCALATION: z.string().default("claude-haiku-4-5"),
-  LITELLM_MODEL_OCR: z.string().default("mistral-ocr-latest"),
-  LITELLM_MODEL_COMPLETION: z.string().default("mistral-small-latest"),
+  LITELLM_MODEL_SMALL: z.string().default("deepseek/deepseek-v4-flash"),
+  LITELLM_MODEL_ESCALATION: z
+    .string()
+    .default("openrouter/anthropic/claude-haiku-4.5"),
+  LITELLM_MODEL_OCR: z.string().default("mistral/mistral-ocr-latest"),
+  LITELLM_MODEL_COMPLETION: z.string().default("deepseek/deepseek-v4-flash"),
 
   CRON_SECRET: optionalMin(8),
 

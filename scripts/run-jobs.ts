@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import "dotenv/config";
 import { drainJobs } from "../src/lib/jobs";
 import "../src/lib/jobs-handlers";
 
