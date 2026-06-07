@@ -4,27 +4,37 @@ type Role = "system" | "user" | "assistant";
 
 export interface ChatMessage {
   role: Role;
-  content: string;
+  content: string | ChatContentPart[];
 }
 
-interface LlmOptions {
+export type ChatContentPart =
+  | { type: "text"; text: string }
+  | { type: "image_url"; image_url: { url: string } };
+
+export interface LlmOptions {
   temperature?: number;
   maxOutputTokens?: number;
   json?: boolean;
+  signal?: AbortSignal;
 }
 
 export interface LlmCompletion {
   text: string;
   model: string;
-  provider: "mistral" | "anthropic" | "openai";
+  provider: string;
   tokensIn: number;
   tokensOut: number;
 }
 
-interface LlmDriver {
-  name: LlmCompletion["provider"];
+export interface LlmDriver {
   model: string;
-  complete: (messages: ChatMessage[], opts: LlmOptions) => Promise<LlmCompletion>;
+  complete: (messages: ChatMessage[], opts?: LlmOptions) => Promise<LlmCompletion>;
+}
+
+interface OpenAIChatResponse {
+  choices: { message: { content: string | null } }[];
+  usage?: { prompt_tokens?: number; completion_tokens?: number };
+  model?: string;
 }
 
 function requireEnv(name: string): string {
@@ -33,123 +43,80 @@ function requireEnv(name: string): string {
   return v;
 }
 
-function mistralDriver(model: string): LlmDriver {
-  return {
-    name: "mistral",
-    model,
-    async complete(messages, opts) {
-      const apiKey = requireEnv("MISTRAL_API_KEY");
-      const res = await fetch("https://api.mistral.ai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          temperature: opts.temperature ?? 0.2,
-          max_tokens: opts.maxOutputTokens ?? 1024,
-          response_format: opts.json ? { type: "json_object" } : undefined,
-        }),
-      });
-      if (!res.ok) throw new Error(`Mistral error ${res.status}: ${await res.text()}`);
-      const json = (await res.json()) as {
-        choices: { message: { content: string } }[];
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
-      };
-      return {
-        text: json.choices[0]?.message?.content ?? "",
-        model,
-        provider: "mistral",
-        tokensIn: json.usage?.prompt_tokens ?? 0,
-        tokensOut: json.usage?.completion_tokens ?? 0,
-      };
-    },
-  };
+function getBaseUrl(): string {
+  return (process.env.LITELLM_BASE_URL || "https://litellm-production-33a41.up.railway.app").replace(/\/$/, "");
 }
 
-function anthropicDriver(model: string): LlmDriver {
-  return {
-    name: "anthropic",
-    model,
-    async complete(messages, opts) {
-      const apiKey = requireEnv("ANTHROPIC_API_KEY");
-      const system = messages.find((m) => m.role === "system")?.content;
-      const rest = messages.filter((m) => m.role !== "system");
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: {
-          "x-api-key": apiKey,
-          "anthropic-version": "2023-06-01",
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: opts.maxOutputTokens ?? 1024,
-          temperature: opts.temperature ?? 0.2,
-          system,
-          messages: rest.map((m) => ({ role: m.role, content: m.content })),
-        }),
-      });
-      if (!res.ok) throw new Error(`Anthropic error ${res.status}: ${await res.text()}`);
-      const json = (await res.json()) as {
-        content: { type: string; text: string }[];
-        usage: { input_tokens: number; output_tokens: number };
-      };
-      return {
-        text: json.content.find((c) => c.type === "text")?.text ?? "",
-        model,
-        provider: "anthropic",
-        tokensIn: json.usage.input_tokens,
-        tokensOut: json.usage.output_tokens,
-      };
-    },
-  };
+function getApiKey(): string {
+  return requireEnv("LITELLM_API_KEY");
 }
 
-function openaiDriver(model: string): LlmDriver {
-  return {
-    name: "openai",
-    model,
-    async complete(messages, opts) {
-      const apiKey = requireEnv("OPENAI_API_KEY");
-      const res = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model,
-          messages,
-          temperature: opts.temperature ?? 0.2,
-          max_tokens: opts.maxOutputTokens ?? 1024,
-          response_format: opts.json ? { type: "json_object" } : undefined,
-        }),
-      });
-      if (!res.ok) throw new Error(`OpenAI error ${res.status}: ${await res.text()}`);
-      const json = (await res.json()) as {
-        choices: { message: { content: string } }[];
-        usage: { prompt_tokens: number; completion_tokens: number };
-      };
-      return {
-        text: json.choices[0]?.message?.content ?? "",
-        model,
-        provider: "openai",
-        tokensIn: json.usage?.prompt_tokens ?? 0,
-        tokensOut: json.usage?.completion_tokens ?? 0,
-      };
-    },
-  };
+function isLikelyMistralOcrModel(model: string): boolean {
+  return /ocr/i.test(model);
+}
+
+export function getLlm(model?: string): LlmDriver {
+  const resolvedModel = model || process.env.LITELLM_MODEL_SMALL || "mistral-small-latest";
+  return makeLiteLLMDriver(resolvedModel);
 }
 
 export function getDefaultLlm(): LlmDriver {
-  return mistralDriver(process.env.MISTRAL_MODEL_SMALL || "mistral-small-latest");
+  return getLlm();
 }
 
 export function getEscalationLlm(): LlmDriver {
-  if (process.env.ANTHROPIC_API_KEY) return anthropicDriver("claude-haiku-4-5");
-  if (process.env.OPENAI_API_KEY) return openaiDriver("gpt-5.4-mini");
-  return getDefaultLlm();
+  const model = process.env.LITELLM_MODEL_ESCALATION || "claude-haiku-4-5";
+  return getLlm(model);
+}
+
+export function getOcrLlm(): LlmDriver {
+  const model = process.env.LITELLM_MODEL_OCR || "mistral-ocr-latest";
+  return getLlm(model);
+}
+
+export function getCompletionModel(): LlmDriver {
+  return getLlm(process.env.LITELLM_MODEL_COMPLETION || "mistral-small-latest");
+}
+
+function makeLiteLLMDriver(model: string): LlmDriver {
+  return {
+    model,
+    async complete(messages, opts) {
+      const apiKey = getApiKey();
+      const baseUrl = getBaseUrl();
+      const body: Record<string, unknown> = {
+        model,
+        messages,
+        temperature: opts?.temperature ?? 0.2,
+      };
+      if (opts?.maxOutputTokens) body.max_tokens = opts.maxOutputTokens;
+      else if (!isLikelyMistralOcrModel(model)) body.max_tokens = 1024;
+      if (opts?.json) body.response_format = { type: "json_object" };
+
+      const res = await fetch(`${baseUrl}/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+        signal: opts?.signal,
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`LiteLLM error ${res.status} (${model}): ${text.slice(0, 500)}`);
+      }
+
+      const json = (await res.json()) as OpenAIChatResponse;
+      const content = json.choices?.[0]?.message?.content ?? "";
+      return {
+        text: content,
+        model: json.model ?? model,
+        provider: "litellm",
+        tokensIn: json.usage?.prompt_tokens ?? 0,
+        tokensOut: json.usage?.completion_tokens ?? 0,
+      };
+    },
+  };
 }

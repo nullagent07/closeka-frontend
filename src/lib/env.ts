@@ -1,8 +1,7 @@
 import { z } from "zod";
 
 const optionalMin = (min: number) =>
-  z
-    .preprocess((v) => (v === "" || v == null ? undefined : v), z.string().min(min).optional());
+  z.preprocess((v) => (v === "" || v == null ? undefined : v), z.string().min(min).optional());
 
 const optional = z.preprocess(
   (v) => (v === "" || v == null ? undefined : v),
@@ -33,9 +32,15 @@ const serverSchema = z.object({
   STRIPE_WEBHOOK_SECRET: optionalMin(1),
   NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: optionalMin(1),
 
-  MISTRAL_API_KEY: optionalMin(1),
-  ANTHROPIC_API_KEY: optionalMin(1),
-  OPENAI_API_KEY: optionalMin(1),
+  LITELLM_BASE_URL: z
+    .string()
+    .url()
+    .default("https://litellm-production-33a41.up.railway.app"),
+  LITELLM_API_KEY: optionalMin(1),
+  LITELLM_MODEL_SMALL: z.string().default("mistral-small-latest"),
+  LITELLM_MODEL_ESCALATION: z.string().default("claude-haiku-4-5"),
+  LITELLM_MODEL_OCR: z.string().default("mistral-ocr-latest"),
+  LITELLM_MODEL_COMPLETION: z.string().default("mistral-small-latest"),
 
   CRON_SECRET: optionalMin(8),
 
