@@ -10,7 +10,8 @@ Monthly close copilot for accounting and bookkeeping firms. Stop chasing clients
 - **Supabase** for Postgres + Storage (with RLS) — service role for jobs
 - **Postmark** for transactional + inbound email
 - **Drizzle ORM** + `drizzle-kit` for schema/migrations
-- **Mistral Small 4** as default LLM, **Claude Haiku 4.5** or **GPT-5.4 mini** as escalation
+- **LiteLLM proxy** for all AI (LLM + OCR) — single endpoint that fronts Mistral Small, Claude Haiku 4.5, Mistral OCR
+- Job handler `analyze_close` calls `analyzeClose()` (LLM) and `ocrDocument()` (Mistral OCR) for attached documents
 - **Stripe** for billing
 - **Vercel Cron** + a Supabase `jobs` table as a lightweight durable job queue (no Trigger.dev on day one)
 
@@ -26,7 +27,7 @@ cp .env.example .env.local
 #   NEXT_PUBLIC_SUPABASE_ANON_KEY
 #   SUPABASE_SERVICE_ROLE_KEY
 #   POSTMARK_API_TOKEN, POSTMARK_FROM_EMAIL
-#   MISTRAL_API_KEY
+#   LITELLM_BASE_URL, LITELLM_API_KEY  (proxy URL + virtual key)
 #   STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY
 #   STRIPE_PRICE_ID_STARTER, STRIPE_PRICE_ID_GROWTH, STRIPE_PRICE_ID_SCALE
 #   CRON_SECRET
@@ -56,11 +57,30 @@ For local dev you can manually drain:
 pnpm cron:process
 ```
 
-## AI pipeline
+## AI pipeline (LiteLLM proxy)
 
-`src/lib/ai/close-analysis.ts` runs the LLM against checklist + documents. The model returns strict JSON
-with `blockers`, `questions`, `emailSubject`, `emailBody`. Nothing is sent without an explicit
-`approvedAt` on `email_drafts`.
+All AI requests go through a single LiteLLM proxy (`LITELLM_BASE_URL`). One virtual key
+(`LITELLM_API_KEY`, must start with `sk-`) gives access to all configured models:
+
+| Use | Env var | Default model |
+|---|---|---|
+| Default chat / analysis | `LITELLM_MODEL_SMALL` | `mistral-small-latest` |
+| Escalation (when small isn't enough) | `LITELLM_MODEL_ESCALATION` | `claude-haiku-4-5` |
+| Document OCR (PDF / image) | `LITELLM_MODEL_OCR` | `mistral-ocr-latest` |
+| Generic completion | `LITELLM_MODEL_COMPLETION` | `mistral-small-latest` |
+
+`src/lib/llm.ts` exposes `getDefaultLlm()`, `getEscalationLlm()`, `getOcrLlm()` — all return
+OpenAI-compatible `LlmDriver` instances that POST to `${LITELLM_BASE_URL}/v1/chat/completions`.
+
+`src/lib/ai/ocr.ts` posts to `${LITELLM_BASE_URL}/v1/ocr` (Mistral OCR passthrough) and falls
+back to chat completions with image input if OCR is not available on the proxy.
+
+The `analyze_close` job handler:
+1. Resolves the client and period from the DB.
+2. Loads the checklist.
+3. For each attached document (PDF / image), downloads via the Supabase service-role client and runs OCR; results cached in `document_extractions.rawText`.
+4. Calls `analyzeClose({clientName, periodLabel, checklist, documents})` — returns strict JSON with `blockers`, `questions`, `emailSubject`, `emailBody`.
+5. Persists `question_sets`, `questions`, and `email_drafts`. Nothing is sent without an explicit `approvedAt`.
 
 ## Inbound email (Postmark)
 
@@ -108,7 +128,7 @@ vercel.json           Cron schedule (`/api/cron/jobs`)
 Registered in `src/lib/jobs-handlers.ts`:
 
 - `process_inbound_email` — match inbound Postmark message to a client and link it
-- `analyze_close` — call the LLM, persist `question_sets`/`questions`/`email_drafts`
+- `analyze_close` — OCR attached documents, call LLM, persist `question_sets`/`questions`/`email_drafts`
 - `send_reminder` — send an approved draft via Postmark
 
 ## Naming
