@@ -4,7 +4,8 @@ const isProtected = createRouteMatcher([
   "/dashboard(.*)",
   "/clients(.*)",
   "/settings(.*)",
-  "/api/(?!webhooks|cron|postmark|jobs).*",
+  "/api/billing(.*)",
+  "/api/uploads(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
